@@ -1,0 +1,258 @@
+---
+title: "Seurat_STARsolo_soloTE_analysis"
+author: "Assa Y."
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    highlight: haddock
+    number_sections: yes
+    theme: paper
+    toc: yes
+    css: "test.css"
+    toc_depth: 4
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+  pdf_document:
+    toc: yes
+    toc_depth: 4
+  bibliography: /Users/yeroslaviz/ownCloud/ownCloud_Personal/ownCloud_projects/citations.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# libraries
+
+```{r}
+suppressMessages(library(Seurat))
+suppressMessages(library(ggpubr))
+suppressMessages(library(dplyr))
+suppressMessages(library(clustree))
+suppressMessages(library(monocle))
+suppressMessages(library(ggplot2))
+suppressMessages(library(cowplot))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(corrplot))
+suppressMessages(library(SingleR))
+suppressMessages(library(stringr))
+```
+
+# read in the data
+
+```{r}
+solote_starsolo <- Read10X(data.dir = "../soloTE_output/starsolo_SoloTE_output/" )
+seurat_starsolo <- CreateSeuratObject(count=solote_starsolo, min.cells=3, project="SoloTE_Ssolo")
+```
+
+## add mitochondrial information
+
+```{r}
+seurat_starsolo[["percent.mt"]] <- PercentageFeatureSet(seurat_starsolo, pattern = "^mt:")
+```
+
+
+# QC filtering
+
+```{r}
+seurat_starsolo <- subset(x = seurat_starsolo, subset = nFeature_RNA > 200 & percent.mt < 10)
+
+VlnPlot(object = seurat_starsolo, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), pt.size = 0.8, ncol = 3, raster = TRUE)
+```
+
+# Normalization
+
+```{r}
+seurat_starsolo <- NormalizeData(seurat_starsolo, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+#CellCycle Scoring
+```{r}
+cc.genes <- readLines(con = "./cell_cycle_genes.txt") ##PROVIDED IN THE SUPPLEMENTARY
+g2m.genes <- cc.genes[1:68]
+s.genes <- cc.genes[69:124]
+seurat_starsolo <- CellCycleScoring(object = seurat_starsolo, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+```
+
+# Identification of highly variable features (feature selection)
+
+```{r}
+seurat_starsolo <- FindVariableFeatures(seurat_starsolo, selection.method = "vst", nfeatures = 2000)
+```
+
+# Scaling the data
+
+```{r}
+seurat_starsolo@meta.data$CC.Difference <- seurat_starsolo@meta.data$S.Score - seurat_starsolo@meta.data$G2M.Score
+seurat_starsolo <- ScaleData(object = seurat_starsolo, vars.to.regress = c("nCount_RNA", "percent.mt", "CC.Difference"), verbose = TRUE)
+```
+
+# Perform linear dimensional reduction
+
+```{r}
+seurat_starsolo <- RunPCA(object = seurat_starsolo, features = VariableFeatures(seurat_starsolo), do.print = TRUE, pcs.compute = 100, pcs.print = 1:5, genes.print = 10)
+```
+
+# Cluster the cells
+
+```{r}
+use.pcs = c(1:30)
+seurat_starsolo <- FindNeighbors(seurat_starsolo, dims = use.pcs)
+seurat_starsolo <- FindClusters(seurat_starsolo, resolution = seq(0,0.5,0.1), verbose = FALSE, algorithm = 3)
+```
+
+```{r}
+Idents(seurat_starsolo) <- 'RNA_snn_res.2.5'
+table(Idents(seurat_starsolo))
+```
+
+# Run non-linear dimensional reduction (UMAP/tSNE)
+
+```{r}
+seurat_starsolo <- RunUMAP(object = seurat_starsolo, reduction = "pca", dims = use.pcs, n_neighbors = 20, min_dist = 0.35)
+DimPlot(object = seurat_starsolo, reduction = "umap", 
+        pt.size = 1.2, label = TRUE, group.by = c("ident", "Phase"))
+```
+
+
+# Finding differentially expressed features (cluster biomarkers)
+
+Seurat can help finding markers that define clusters via differential expression. By default, it identifies positive and negative markers of a single cluster (specified in ident.1), compared to all other cells. `FindAllMarkers()` automates this process for all clusters, but you can also test groups of clusters vs. each other, or against all cells.
+
+The `min.pct` argument requires a feature to be detected at a minimum percentage in either of the two groups of cells, and the `thresh.test` argument requires a feature to be differentially expressed (on average) by some amount between the two groups.
+
+Seurat has several tests for differential expression which can be set with the test.use parameter (see our [DE vignette](https://satijalab.org/seurat/articles/de_vignette.html) for details).
+
+```{r}
+markers_starsolo <- FindAllMarkers(seurat_starsolo,only.pos=TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+markers_starsolo %>%
+    group_by(cluster) %>%
+    slice_max(n = 5, order_by = avg_log2FC)
+```
+
+The next command filters the list of identified markers to only those falling under our threshold.
+
+```{r}
+markers_starsolo_sig <- markers_starsolo[which(markers_starsolo$p_val_adj<=0.05),]
+```
+
+And the one following will grep for all the IDs containing the "SoloTE" pattern.
+
+```{r}
+markers_starsolo_sig_te <- markers_starsolo_sig[grep("SoloTE",markers_starsolo_sig$gene),]
+head(markers_starsolo_sig_te)
+```
+
+## export significant results
+
+```{r}
+write.table(x = markers_starsolo_sig, file = "starsolo_allSigMarkers.txt",sep = "\t", quote = F)
+write.table(x = markers_starsolo_sig_te, file = "starsolo_soloTE_SigMarkers.txt",sep = "\t", quote = F)
+```
+
+
+# Marker visualization
+
+## `VlnPlot()` shows expression probability distributions across clusters.
+
+```{r}
+genes.list <- unique(markers_starsolo_sig_te$gene)
+for(i in 1:length(genes.list)) {
+  print(VlnPlot(object = seurat_starsolo, 
+                features = genes.list[i]))
+  ggsave(filename = paste0("Figures/VlnPlot/soloTE_starsolo_SigMarker_", genes.list[i], "_VlnPlot.pdf"), width = 28)
+}
+```
+
+## `FeaturePlot()` visualizes feature expression on a `tSNE` or `PCA` plot.
+
+```{r}
+for (i in 1:length(genes.list)) {
+  print(FeaturePlot(object = seurat_starsolo, 
+                    features = genes.list[i], 
+                    label = TRUE
+                    ) + 
+          scale_color_gradient(high = 'darkblue', 
+                               low = 'yellow', 
+                               limits = c(0,6)
+                               )
+        )
+  ggsave(filename = paste0("Figures/FeaturePlot/soloTE_starsolo_SigMarker_", genes.list[i], "_FeaturePlot.pdf"))
+}
+```
+
+## `DoHeatmap()` generates an expression heatmap for given cells and features. 
+
+```{r}
+markers_starsolo_sig_te %>%
+    group_by(cluster) %>%
+    top_n(n = 2, wt = avg_log2FC) -> top10 # top 10 from each cluster!
+top10
+DoHeatmap(seurat_starsolo, features = top10$gene, slot = "scale.data" ) + NoLegend()
+```
+
+# Assigning cell labels from reference data
+
+## Annotating the cells using `singleR` with annotated data set
+
+From the authors of the paper "A single-cell atlas of adult Drosophila ovary identifies transcriptional programs and somatic cell lineage regulating oogenesis" I have got their `Seurat` object to annotate our data with.
+
+### convert annotated data to the recent `Seurat` version
+
+```{r}
+cells_highquality_ovary.v2.4 <- readRDS("7053cells_highquality_ovary.v2.4.rds")
+cells_highquality_ovary <- UpdateSeuratObject(cells_highquality_ovary.v2.4)
+cells_highquality_ovary.sce <- as.SingleCellExperiment(cells_highquality_ovary)
+```
+
+### converting my seurat objects to singleCellExperiment objects
+
+```{r}
+sce <- as.SingleCellExperiment(seurat_starsolo)
+```
+
+### Map annotated data set onto the `Seurat` object in question.
+
+```{r}
+library(SingleR) # v. 2.2.0 ???
+library(SingleCellExperiment)
+ref <- cells_highquality_ovary.sce
+pred <- SingleR(test=sce, ref=ref, labels=ref$ident, de.method = "wilcox", num.threads = 6) #, clusters = colData(sce)$ident)
+pred.clusters <- SingleR(test=sce, ref=ref, labels=ref$ident, de.method = "wilcox", clusters = sce$ident)
+```
+
+```{r}
+seurat_starsolo[["SingleR.labels"]] <- gsub(pattern = "^[\\d]{1,2}\\. ", 
+                                            replacement = "", x = pred$labels, perl = TRUE)
+seurat_starsolo[["SingleR.numbers"]] <-  stringr::str_match(string = pred$labels,
+                                                            pattern = "[\\d]{1,2}")
+```
+
+```{r}
+DimPlot(object = seurat_starsolo, 
+        reduction = "umap", pt.size = 1.2, 
+        label = TRUE, group.by = c("ident", "SingleR.labels")
+        )
+```
+
+# Sesson Info
+
+```{r}
+saveRDS(object = seurat_starsolo, file = "seurat_starsolo.RDS")
+```
+
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
