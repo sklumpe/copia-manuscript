@@ -1,4 +1,4 @@
-# In-cell structure of copia retrotransposons GitHub repository
+# In-cell structure of copia retrotransposons
 
 This is a github repository with data and code related to the manuscript
 
