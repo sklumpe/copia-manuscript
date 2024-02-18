@@ -1,5 +1,7 @@
 # In-cell structure of copia retrotransposons
 
+![](/img/GitHub.png)
+
 This is a github repository with data and code related to the manuscript
 
 "In-cell structure and snapshots of copia retrotransposons in intact D. melanogaster egg chambers"
