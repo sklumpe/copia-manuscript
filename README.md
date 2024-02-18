@@ -1,4 +1,4 @@
-# copia-manuscript
+# In-cell structure of copia retrotransposons GitHub repository
 
 This is a github repository with data and code related to the manuscript
 
