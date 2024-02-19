@@ -7,7 +7,7 @@ This is a github repository with data and code related to the manuscript
 "In-cell structure and snapshots of copia retrotransposons in intact D. melanogaster egg chambers"
 
 The repository includes:
-   - scRNAseq analysis pipeline used for identifying TEs from the dataset published by [Jevitt et al. 2020 PLoS One](https://doi.org/10.1371/journal.pbio.3000538)
+   - scRNAseq analysis pipeline used for identifying TEs from the dataset published by [Jevitt et al. 2020 PLoS One](https://doi.org/10.1371/journal.pbio.3000538) using the [SoloTE package](https://www.nature.com/articles/s42003-022-04020-5) available [here](https://github.com/bvaldebenitom/SoloTE/)
    - cryoET scripts for intercapsid contacts
 
 Due to file size restrictions, the Seurat object is uploaded [here](https://zenodo.org/records/10674844).
