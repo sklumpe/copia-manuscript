@@ -16,5 +16,5 @@ The density and structural model were deposited on the EMDB under accession code
    - Plastic tomograms: EMD-19643, EMD-19644, EMD-19645, EMD-19646
    - Example cryo-tomograms: EMD- 19647, EMD- 19648
    - Subtomogram averages of intercapsid contacts: EMD-19649 (C1-C1), EMD-19650 (C1-C5), EMD- 19651 (C5-C5)
-   - Subtomogram average and structural model: EMD-XXXXX, PDB: XXXX
+   - Subtomogram average and structural model: EMD-19708, PDB: 8S41
    - Tilt series dataset: EMPIAR-XXXXX
